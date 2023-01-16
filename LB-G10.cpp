@@ -1,26 +1,19 @@
 #include <ws2tcpip.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-
 #define DEFAULT_BUFLEN 512
 #define DEFAULT_PORT "27016"
-
-
 #define _CRT_SECURE_NO_WARNINGS
-
 
 bool InitializeWindowsSockets();
 
 int  main(void)
 {
-    // Socket used for listening for new clients 
+    
     SOCKET listenSocket = INVALID_SOCKET;
-    // Socket used for communication with client
     SOCKET acceptedSocket = INVALID_SOCKET;
-    // variable used to store function return value
+
     int iResult;
-    // Buffer used for storing incoming data
     char recvbuf[DEFAULT_BUFLEN];
     char messageToSend[DEFAULT_BUFLEN];
 
@@ -31,7 +24,7 @@ int  main(void)
         return 1;
     }
 
-    // Prepare address information structures
+    
     addrinfo* resultingAddress = NULL;
     addrinfo hints;
 
@@ -41,7 +34,7 @@ int  main(void)
     hints.ai_protocol = IPPROTO_TCP; // Use TCP protocol
     hints.ai_flags = AI_PASSIVE;     // 
 
-    // Resolve the server address and port
+    
     iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &resultingAddress);
     if (iResult != 0)
     {
@@ -50,7 +43,7 @@ int  main(void)
         return 1;
     }
 
-    // Create a SOCKET for connecting to server
+    
     listenSocket = socket(AF_INET,      // IPv4 address famly
         SOCK_STREAM,  // stream socket
         IPPROTO_TCP); // TCP
@@ -75,7 +68,6 @@ int  main(void)
         return 1;
     }
 
-    // Since we don't need resultingAddress any more, free it
     freeaddrinfo(resultingAddress);
 
     // Set listenSocket in listening mode
@@ -92,10 +84,6 @@ int  main(void)
     
     do
     {
-        // Wait for clients and accept client connections.
-        // Returning value is acceptedSocket used for further
-        // Client<->Server communication. This version of
-        // server will handle only one client.
         acceptedSocket = accept(listenSocket, NULL, NULL);
 
         if (acceptedSocket == INVALID_SOCKET)
@@ -108,9 +96,6 @@ int  main(void)
 
         do
         {
-            
-
-
             // Receive data until the client shuts down the connection
             iResult = recv(acceptedSocket, recvbuf, DEFAULT_BUFLEN, 0);
             if (iResult > 0)
@@ -150,7 +135,6 @@ int  main(void)
         return 1;
     }
 
-    // cleanup
     closesocket(listenSocket);
     closesocket(acceptedSocket);
     WSACleanup();

@@ -16,7 +16,6 @@
 
 HANDLE globalSemaphore;
 CRITICAL_SECTION cs;
-
 int globalna = 0;
 
 DWORD WINAPI ActivateWorkers(LPVOID lpvThreadParam) {
@@ -61,23 +60,16 @@ DWORD WINAPI ActivateWorkers(LPVOID lpvThreadParam) {
     } while (true);
 }
 
-
-// Initializes WinSock2 library
-// Returns true if succeeded, false otherwise.
 bool InitializeWindowsSockets();
 
 int  main()
 {
-    // socket used to communicate with server
     SOCKET connectSocket = INVALID_SOCKET;
-    // variable used to store function return value
+
     int iResult;
-    // message to send
     char messageToSend[DEFAULT_BUFLEN];
     char temp[DEFAULT_BUFLEN]; //prevelik je al sta je tu je 
     char recvbuf[DEFAULT_BUFLEN];
-
-
 
     if (InitializeWindowsSockets() == false)
     {
@@ -98,7 +90,6 @@ int  main()
         return 1;
     }
 
-    // create and initialize address structure
     sockaddr_in serverAddress;
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = inet_addr(SERVER_IP_ADDRESS);
@@ -150,8 +141,6 @@ int  main()
 
     } while (1);
 
-
-
     if (iResult == SOCKET_ERROR)
     {
         printf("send failed with error: %d\n", WSAGetLastError());
@@ -162,13 +151,11 @@ int  main()
 
     printf("Bytes Sent: %ld\n", iResult);
 
-    // cleanup
     closesocket(connectSocket);
     WSACleanup();
 
     return 0;
 }
-
 bool InitializeWindowsSockets()
 {
     WSADATA wsaData;
