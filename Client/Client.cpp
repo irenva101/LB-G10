@@ -30,15 +30,22 @@ DWORD WINAPI ActivateWorkers(LPVOID lpvThreadParam) {
         scanf_s("%d", &a);
         if (a == 1)
         {
+            
             printf("Upalio si ga :>\n");
             globalna++;
             changedValue = true;
         }
         else if (a == 0)
         {
-            printf("Ugasio si ga :<\n");
-            globalna--;
-            changedValue = true;
+            if (globalna == 0) {
+                printf("Ne mozete ugasiti workera jer nije ni jedan upaljen.\n");
+                changedValue = false;
+            }
+            else {
+                printf("Ugasio si ga :<\n");
+                globalna--;
+                changedValue = true;
+            }
         }
         else
         {
@@ -52,9 +59,10 @@ DWORD WINAPI ActivateWorkers(LPVOID lpvThreadParam) {
             char messageToSend[DEFAULT_BUFLEN];
             int iResult;
             sprintf(messageToSend, "BROJGLOBAL:%d", globalna);
+
             iResult = send(connectSocket, messageToSend, (int)strlen(messageToSend) + 1, 0);
         }
-        //gets_s(temp, DEFAULT_BUFLEN);
+        
         
 
     } while (true);
@@ -107,8 +115,6 @@ int  main()
     HANDLE activeWorkerThread = CreateThread(NULL, 0, &ActivateWorkers, (LPVOID)connectSocket, 0, &myThreadID1);
     do {
         
-        //gets_s(messageToSend, DEFAULT_BUFLEN);
-        //WaitForSingleObject(globalSemaphore, INFINITE);
         sprintf(messageToSend, "%d", rand() % 5000);
         iResult = send(connectSocket, messageToSend, (int)strlen(messageToSend) + 1, 0);
 

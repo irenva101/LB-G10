@@ -7,6 +7,9 @@
 
 bool InitializeWindowsSockets();
 
+
+
+
 int  main(void)
 {
     
@@ -103,7 +106,8 @@ int  main(void)
                 printf("Message received from client: %s.\n", recvbuf);
                 
 
-                OutputDebugStringW((LPCWSTR)recvbuf);; //ovo treba da ispise u debug kozoli propravi to
+                OutputDebugStringA(recvbuf);//ovo treba da ispise u debug kozoli
+                OutputDebugStringA("\n");
 
                 
             }
