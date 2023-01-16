@@ -1,24 +1,81 @@
 #include <ws2tcpip.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #define DEFAULT_BUFLEN 512
 #define DEFAULT_PORT "27016"
 #define _CRT_SECURE_NO_WARNINGS
+#define MAX_WORKER_COUNT 10  
 
 bool InitializeWindowsSockets();
 
+#pragma region red
+#define true 1
+#define false 0
+#define MAX 10
+struct QUEUE {
+    int F;
+    int R;
+    int data[MAX];
+};
 
+int isFull(struct QUEUE* s) {
+    return s->R == MAX - 1 ? true : false;
+}
 
+int isEmpty(struct QUEUE* s) {
+    return s->R < s->F ? true : false;
+}
+
+void enqueue(struct QUEUE* s, int element) {
+    s->R += 1; //kada dodajemo element REAR povecavamo za 1
+    s->data[s->R] = element;
+}
+
+int dequeue(struct QUEUE* s) {
+    int ret = s->data[s->F]; //vrednost prvog u redu
+    s->F += 1;
+    return ret;
+}
+
+int checkFront(struct QUEUE* s) {
+    return s->data[s->F];
+}
+
+int checkRear(struct QUEUE* s) {
+    return s->data[s->R];
+}
+#pragma endregion 
+#pragma region Worker
+HANDLE globalSemaphore;
+DWORD WINAPI WorkersDoingWork(LPVOID lpvThreadParam) {
+    do {
+        //waitforsingle object
+        //if queue not empty
+        //izvucem iz reda 
+        //ispisem u outputu
+
+    } while (true);
+}
+#pragma endregion
+int brAktivnihWorkera = 0;
+CRITICAL_SECTION cs;
 
 int  main(void)
 {
+    DWORD workerID[MAX_WORKER_COUNT]; //10 spremnih
+    HANDLE workerThreads[MAX_WORKER_COUNT];
     
+   
+
     SOCKET listenSocket = INVALID_SOCKET;
     SOCKET acceptedSocket = INVALID_SOCKET;
 
     int iResult;
     char recvbuf[DEFAULT_BUFLEN];
     char messageToSend[DEFAULT_BUFLEN];
+
+    struct QUEUE red = { 0,-1 };
 
     if (InitializeWindowsSockets() == false)
     {
@@ -88,7 +145,6 @@ int  main(void)
     do
     {
         acceptedSocket = accept(listenSocket, NULL, NULL);
-
         if (acceptedSocket == INVALID_SOCKET)
         {
             printf("accept failed with error: %d\n", WSAGetLastError());
@@ -99,17 +155,40 @@ int  main(void)
 
         do
         {
-            // Receive data until the client shuts down the connection
             iResult = recv(acceptedSocket, recvbuf, DEFAULT_BUFLEN, 0);
             if (iResult > 0)
             {
                 printf("Message received from client: %s.\n", recvbuf);
-                
 
+                char subString[DEFAULT_BUFLEN];
+                memset(subString, '\0', sizeof(subString));
+                strncpy_s(subString, recvbuf, 11);
+                if(strcmp(subString, "BROJGLOBAL:")==0){
+                    strncpy_s(subString, recvbuf + 11, 2);
+                    printf("%s\n", subString);
+                    brAktivnihWorkera = atoi(subString);
+                }
+                else {
+                    int number = atoi(recvbuf);
+                    if (!isFull(&red)) {
+                        EnterCriticalSection(&cs);
+                        enqueue(&red, number);
+                        LeaveCriticalSection(&cs);
+                        //releasesemaphore
+                    }
+                    else {
+                        //nista, broj samo nece biti obradjen u tom momentu
+                    }
+                }
+                
+                // taj broj poredim sa trenutnim br aktivnim tredova
+                // 
+                //trebace mi i funkcija close i open worker()
+                //u zavisnosti koliko imam workera toliko imam niti (open close hadle)
+              
+                
                 OutputDebugStringA(recvbuf);//ovo treba da ispise u debug kozoli
                 OutputDebugStringA("\n");
-
-                
             }
             else if (iResult == 0)
             {

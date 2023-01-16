@@ -58,7 +58,7 @@ DWORD WINAPI ActivateWorkers(LPVOID lpvThreadParam) {
             //ReleaseSemaphore(globalSemaphore, 1, NULL);
             char messageToSend[DEFAULT_BUFLEN];
             int iResult;
-            sprintf(messageToSend, "BROJGLOBAL:%d", globalna);
+            sprintf(messageToSend, "BROJGLOBAL:%d", globalna); //klijent salje info serveru kolko ima upaljenih workera
 
             iResult = send(connectSocket, messageToSend, (int)strlen(messageToSend) + 1, 0);
         }
