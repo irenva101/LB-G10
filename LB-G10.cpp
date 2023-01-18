@@ -1,72 +1,145 @@
 #include <ws2tcpip.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
+
 #define DEFAULT_BUFLEN 512
-#define DEFAULT_PORT "27016"
+#define DEFAULT_PORT "5059"
+#define MAX_WORKERS 10
 #define _CRT_SECURE_NO_WARNINGS
-#define MAX_WORKER_COUNT 10  
 
-bool InitializeWindowsSockets();
+CRITICAL_SECTION cs;
 
-#pragma region red
-#define true 1
-#define false 0
-#define MAX 10
-struct QUEUE {
-    int F;
-    int R;
-    int data[MAX];
-};
-
-int isFull(struct QUEUE* s) {
-    return s->R == MAX - 1 ? true : false;
+#pragma region kju
+typedef struct Queue {
+    int front, rear, size;
+    unsigned capacity;
+    int* array;
+}Queue;
+Queue* createQueue(unsigned capacity)
+{
+    Queue* queue = (Queue*)malloc(sizeof(Queue));
+    queue->capacity = capacity;
+    queue->front = queue->size = 0;
+    // This is important, see the enqueue
+    queue->rear = capacity - 1;
+    queue->array = (int*)malloc(
+        queue->capacity * sizeof(int));
+    return queue;
 }
-
-int isEmpty(struct QUEUE* s) {
-    return s->R < s->F ? true : false;
+int isFull(Queue* queue)
+{
+    return (queue->size == queue->capacity);
 }
-
-void enqueue(struct QUEUE* s, int element) {
-    s->R += 1; //kada dodajemo element REAR povecavamo za 1
-    s->data[s->R] = element;
+int isEmpty(Queue* queue)
+{
+    return (queue->size == 0);
 }
+void enqueue(Queue* queue, int item)
+{
+    if (isFull(queue))
+        return;
+    queue->rear = (queue->rear + 1)
+        % queue->capacity;
+    queue->array[queue->rear] = item;
+    queue->size = queue->size + 1;
+    //printf("%d enqueued to queue\n", item);
+}
+int dequeue(Queue* queue)
+{
+    if (isEmpty(queue))
+        return INT_MIN;
+    int item = queue->array[queue->front];
+    queue->front = (queue->front + 1)
+        % queue->capacity;
+    queue->size = queue->size - 1;
+    return item;
+}
+int front(Queue* queue)
+{
+    if (isEmpty(queue))
+        return INT_MIN;
+    return queue->array[queue->front];
+}
+int rear(struct Queue* queue)
+{
+    if (isEmpty(queue))
+        return INT_MIN;
+    return queue->array[queue->rear];
+}
+#pragma endregion kju
 
-int dequeue(struct QUEUE* s) {
-    int ret = s->data[s->F]; //vrednost prvog u redu
-    s->F += 1;
+typedef struct parameters
+{
+    Queue* kju;
+    int broj;
+}parameters;
+
+HANDLE incomingQueueSemaphor;
+HANDLE outgoingQueueSemaphor;
+HANDLE stopWorkerSemaphor[MAX_WORKERS];
+int activeWorkers[MAX_WORKERS];
+int brObradjenihBrojeva = 0;
+int brPoslatihBrojeva = 0;
+
+int ubacujeURed(Queue* red, int number)
+{
+    //ubacuje u red
+    EnterCriticalSection(&cs);
+    enqueue(red, number);
+    LeaveCriticalSection(&cs);
+    return 0;
+}
+int izbacujeIzReda(Queue* red)
+{
+    int ret = 0;
+    ret = dequeue(red);
     return ret;
 }
+#pragma region worker
+DWORD WINAPI worker(LPVOID lpParam)
+{
+    char debugBuffer[512];
 
-int checkFront(struct QUEUE* s) {
-    return s->data[s->F];
-}
 
-int checkRear(struct QUEUE* s) {
-    return s->data[s->R];
-}
-#pragma endregion 
-#pragma region Worker
-HANDLE globalSemaphore;
-DWORD WINAPI WorkersDoingWork(LPVOID lpvThreadParam) {
-    do {
-        //waitforsingle object
-        //if queue not empty
-        //izvucem iz reda 
-        //ispisem u outputu
+    Queue* readQueue = ((parameters*)lpParam)->kju;
+    int brojWorkera = ((parameters*)lpParam)->broj;
 
-    } while (true);
+    printf("Broj threada %d je upaljen\n", brojWorkera);
+
+    const int semaphore_num = 2;
+    HANDLE semaphores[semaphore_num] = { stopWorkerSemaphor[brojWorkera], incomingQueueSemaphor };
+
+    //ceka ili incomingQueue ili stopWorker semafor zbog false
+    // 
+    //ako je signalizirao incomingQueue sto je 0. semafor u nizu onda
+    //vraca WAIT_OBJECT_0 (+ 0) u suprotnom signalizirao je stopWorker i izlazi iz while
+    //dok ne dobije signal od bilo kojeg ceka
+    while (WaitForMultipleObjects(semaphore_num, semaphores, FALSE, INFINITE) == WAIT_OBJECT_0 + 1)
+    {
+        Sleep(500);
+        int broj = izbacujeIzReda(readQueue);
+        printf("Worker %d uzeo %d iz reda\n", brojWorkera, broj);
+        broj *= -1;
+        sprintf_s(debugBuffer, "%d\n", broj);
+        brObradjenihBrojeva++;
+        OutputDebugStringA(debugBuffer);
+    }
+    printf("Ugasen worker %d\n", brojWorkera);
+    return 0;
 }
-#pragma endregion
-int brAktivnihWorkera = 0;
-CRITICAL_SECTION cs;
+#pragma endregion worker
+
+bool InitializeWindowsSockets();
+int brojGlobal = 0;
+int aktivniWorkeri = 0;
 
 int  main(void)
 {
-    DWORD workerID[MAX_WORKER_COUNT]; //10 spremnih
-    HANDLE workerThreads[MAX_WORKER_COUNT];
-    
-   
+    Queue* incomingQueue = new Queue; //red u koji klijent smesta brojeve
+    incomingQueue = createQueue(10);
+
+    Queue* outgoingQueue = new Queue;
+    outgoingQueue = createQueue(10);
 
     SOCKET listenSocket = INVALID_SOCKET;
     SOCKET acceptedSocket = INVALID_SOCKET;
@@ -75,8 +148,17 @@ int  main(void)
     char recvbuf[DEFAULT_BUFLEN];
     char messageToSend[DEFAULT_BUFLEN];
 
-    struct QUEUE red = { 0,-1 };
+    parameters parametri;
 
+    incomingQueueSemaphor = CreateSemaphore(NULL, 0, 10, NULL);
+    outgoingQueueSemaphor = CreateSemaphore(NULL, 0, 10, NULL);
+    for (int i = 0; i < MAX_WORKERS; i++)
+    {
+        stopWorkerSemaphor[i] = CreateSemaphore(NULL, 0, 1, NULL);
+    }
+    DWORD workerID[MAX_WORKERS];
+    HANDLE workers[MAX_WORKERS];
+#pragma region komunikacijaStuff
     if (InitializeWindowsSockets() == false)
     {
         // we won't log anything since it will be logged
@@ -84,7 +166,6 @@ int  main(void)
         return 1;
     }
 
-    
     addrinfo* resultingAddress = NULL;
     addrinfo hints;
 
@@ -94,7 +175,6 @@ int  main(void)
     hints.ai_protocol = IPPROTO_TCP; // Use TCP protocol
     hints.ai_flags = AI_PASSIVE;     // 
 
-    
     iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &resultingAddress);
     if (iResult != 0)
     {
@@ -102,12 +182,9 @@ int  main(void)
         WSACleanup();
         return 1;
     }
-
-    
     listenSocket = socket(AF_INET,      // IPv4 address famly
         SOCK_STREAM,  // stream socket
         IPPROTO_TCP); // TCP
-
     if (listenSocket == INVALID_SOCKET)
     {
         printf("socket failed with error: %ld\n", WSAGetLastError());
@@ -116,8 +193,6 @@ int  main(void)
         return 1;
     }
 
-    // Setup the TCP listening socket - bind port number and local address 
-    // to socket
     iResult = bind(listenSocket, resultingAddress->ai_addr, (int)resultingAddress->ai_addrlen);
     if (iResult == SOCKET_ERROR)
     {
@@ -130,7 +205,6 @@ int  main(void)
 
     freeaddrinfo(resultingAddress);
 
-    // Set listenSocket in listening mode
     iResult = listen(listenSocket, SOMAXCONN);
     if (iResult == SOCKET_ERROR)
     {
@@ -141,7 +215,8 @@ int  main(void)
     }
 
     printf("Server initialized, waiting for clients.\n");
-    
+#pragma endregion
+
     do
     {
         acceptedSocket = accept(listenSocket, NULL, NULL);
@@ -152,43 +227,57 @@ int  main(void)
             WSACleanup();
             return 1;
         }
-
         do
         {
+            // Receive data until the client shuts down the connection
             iResult = recv(acceptedSocket, recvbuf, DEFAULT_BUFLEN, 0);
             if (iResult > 0)
             {
-                printf("Message received from client: %s.\n", recvbuf);
-
-                char subString[DEFAULT_BUFLEN];
-                memset(subString, '\0', sizeof(subString));
-                strncpy_s(subString, recvbuf, 11);
-                if(strcmp(subString, "BROJGLOBAL:")==0){
-                    strncpy_s(subString, recvbuf + 11, 2);
-                    printf("%s\n", subString);
-                    brAktivnihWorkera = atoi(subString);
+                //printf("Message received from client: %s.\n", recvbuf);
+                int number = atoi(recvbuf);
+                char proveravamo[] = "BROJGLOBAL:";
+                if (strstr(recvbuf, proveravamo) != NULL) {
+                    brojGlobal = atoi(recvbuf + 11);
+                    while (aktivniWorkeri < brojGlobal)
+                    {
+                        parametri.kju = incomingQueue;
+                        parametri.broj = aktivniWorkeri;
+                        workers[aktivniWorkeri] = CreateThread(NULL, 0, &worker, &parametri, 0, workerID + aktivniWorkeri);
+                        aktivniWorkeri++;
+                    }
+                    while (aktivniWorkeri > brojGlobal)
+                    {
+                        aktivniWorkeri--;
+                        ReleaseSemaphore(stopWorkerSemaphor[aktivniWorkeri], 1, NULL);
+                        CloseHandle(workers[aktivniWorkeri]);
+                    }
                 }
-                else {
-                    int number = atoi(recvbuf);
-                    if (!isFull(&red)) {
-                        EnterCriticalSection(&cs);
-                        enqueue(&red, number);
-                        LeaveCriticalSection(&cs);
-                        //releasesemaphore
+                else
+                {
+                    brPoslatihBrojeva++;
+                    if (aktivniWorkeri > 0) {
+
+                        enqueue(incomingQueue, number);
+                        ReleaseSemaphore(incomingQueueSemaphor, 1, NULL);
                     }
                     else {
-                        //nista, broj samo nece biti obradjen u tom momentu
+                        OutputDebugStringA("********Nije upaljen ni jedan worker pa vrednost ");
+                        char s[10];
+                        sprintf_s(s, "%d", number);
+                        OutputDebugStringA(s);
+                        OutputDebugStringA(" nije obradjena.\n");
+                    }
+
+                    if (brPoslatihBrojeva >= 100)
+                    {
+                        char printBuffer[256];
+                        sprintf_s(printBuffer, "Od %d poslatih zahteva obradjeno je %d.\n", brPoslatihBrojeva, brObradjenihBrojeva);
+                        OutputDebugStringA(printBuffer);
+                        brPoslatihBrojeva = 0;
+                        brObradjenihBrojeva = 0;
+
                     }
                 }
-                
-                // taj broj poredim sa trenutnim br aktivnim tredova
-                // 
-                //trebace mi i funkcija close i open worker()
-                //u zavisnosti koliko imam workera toliko imam niti (open close hadle)
-              
-                
-                OutputDebugStringA(recvbuf);//ovo treba da ispise u debug kozoli
-                OutputDebugStringA("\n");
             }
             else if (iResult == 0)
             {
@@ -208,7 +297,6 @@ int  main(void)
 
     } while (1);
 
-    // shutdown the connection since we're done
     iResult = shutdown(acceptedSocket, SD_SEND);
     if (iResult == SOCKET_ERROR)
     {
@@ -221,7 +309,6 @@ int  main(void)
     closesocket(listenSocket);
     closesocket(acceptedSocket);
     WSACleanup();
-
     return 0;
 }
 
@@ -236,3 +323,5 @@ bool InitializeWindowsSockets()
     }
     return true;
 }
+
+

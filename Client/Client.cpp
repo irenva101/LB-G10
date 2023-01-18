@@ -9,64 +9,64 @@
 #include <stdio.h>
 #include <conio.h>
 
+
 #define DEFAULT_BUFLEN 512
-#define DEFAULT_PORT 27016
+#define DEFAULT_PORT 5059
 #define SERVER_IP_ADDRESS "127.0.0.1"
 
 
-HANDLE globalSemaphore;
 CRITICAL_SECTION cs;
+
 int globalna = 0;
+int brPoslatihBrojeva = 0;
+
+
 
 DWORD WINAPI ActivateWorkers(LPVOID lpvThreadParam) {
 
     SOCKET connectSocket = (SOCKET)lpvThreadParam;
-    globalSemaphore = CreateSemaphore(0, 0, 1, NULL);
     bool changedValue = false;
     do {
-        //char temp[DEFAULT_BUFLEN];
         int a;
         printf("Da upalis workera pritisni 1, a da ugasis pritisni 0.\n");
         scanf_s("%d", &a);
         if (a == 1)
         {
-            
-            printf("Upalio si ga :>\n");
-            globalna++;
-            changedValue = true;
-        }
-        else if (a == 0)
-        {
-            if (globalna == 0) {
-                printf("Ne mozete ugasiti workera jer nije ni jedan upaljen.\n");
-                changedValue = false;
+            if (globalna == 10) {
+                printf("Maksimalan broj upaljenih workera je 10. Ne mozete upaliti ni jednog vise.\n");
             }
             else {
-                printf("Ugasio si ga :<\n");
-                globalna--;
+                printf("Upalio si ga :>\n");
+                globalna++;
                 changedValue = true;
             }
         }
+        else if (a == 0)
+        {
+            printf("Ugasio si ga :<\n");
+            if (globalna == 0) {
+                printf("Ne mozete ugasiti workera jer nije ni jedan upaljen.\n");
+            }
+            else  globalna--;
+            changedValue = true;
+        }
         else
         {
-            printf("Niste uneli 0 ili 1. Probajte opet.\n");
+            printf("Niste dobro ukucali broj.\n");
             changedValue = false;
         }
-
         if (changedValue)
         {
             //ReleaseSemaphore(globalSemaphore, 1, NULL);
             char messageToSend[DEFAULT_BUFLEN];
             int iResult;
-            sprintf(messageToSend, "BROJGLOBAL:%d", globalna); //klijent salje info serveru kolko ima upaljenih workera
-
+            sprintf(messageToSend, "BROJGLOBAL:%d", globalna);
             iResult = send(connectSocket, messageToSend, (int)strlen(messageToSend) + 1, 0);
         }
-        
-        
-
     } while (true);
 }
+
+
 
 bool InitializeWindowsSockets();
 
@@ -74,19 +74,17 @@ int  main()
 {
     SOCKET connectSocket = INVALID_SOCKET;
 
-    int iResult;
+    int iResult = 0;
     char messageToSend[DEFAULT_BUFLEN];
     char temp[DEFAULT_BUFLEN]; //prevelik je al sta je tu je 
     char recvbuf[DEFAULT_BUFLEN];
 
     if (InitializeWindowsSockets() == false)
     {
-        // we won't log anything since it will be logged
-        // by InitializeWindowsSockets() function
+
         return 1;
     }
 
-    // create a socket
     connectSocket = socket(AF_INET,
         SOCK_STREAM,
         IPPROTO_TCP);
@@ -102,7 +100,7 @@ int  main()
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = inet_addr(SERVER_IP_ADDRESS);
     serverAddress.sin_port = htons(DEFAULT_PORT);
-    // connect to server specified in serverAddress and socket connectSocket
+
     if (connect(connectSocket, (SOCKADDR*)&serverAddress, sizeof(serverAddress)) == SOCKET_ERROR)
     {
         printf("Unable to connect to server.\n");
@@ -114,36 +112,11 @@ int  main()
     DWORD WINAPI myThread1(LPVOID lpvThreadParam);
     HANDLE activeWorkerThread = CreateThread(NULL, 0, &ActivateWorkers, (LPVOID)connectSocket, 0, &myThreadID1);
     do {
-        
         sprintf(messageToSend, "%d", rand() % 5000);
+        brPoslatihBrojeva++;
         iResult = send(connectSocket, messageToSend, (int)strlen(messageToSend) + 1, 0);
 
-        
-        if (messageToSend[0] == 'q') {
-            closesocket(connectSocket);
-            WSACleanup();
-            break;
-        }
         Sleep(100);
-        /*iResult = recv(connectSocket, recvbuf, DEFAULT_BUFLEN, 0);
-        if (iResult > 0)
-        {
-            printf("%s\n", recvbuf);
-            //printf("Message received from client: %s.\n", recvbuf);
-        }
-        else if (iResult == 0)
-        {
-            // connection was closed gracefully
-            printf("Connection with client closed.\n");
-            closesocket(connectSocket);
-        }
-        else
-        {
-            // there was an error during recv
-            printf("recv failed with error: %d\n", WSAGetLastError());
-            closesocket(connectSocket);
-        }
-        */
 
     } while (1);
 
@@ -159,9 +132,9 @@ int  main()
 
     closesocket(connectSocket);
     WSACleanup();
-
     return 0;
 }
+
 bool InitializeWindowsSockets()
 {
     WSADATA wsaData;
